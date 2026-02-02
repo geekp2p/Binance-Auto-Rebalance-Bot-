@@ -17,6 +17,7 @@ from src.order_manager import OrderManager
 from src.martingale import MartingaleCalculator
 from backtest.backtester import Backtester
 from backtest.data_loader import DataLoader
+from src.web_dashboard import TradingDashboard
 
 # Setup logging
 logging.basicConfig(
@@ -179,14 +180,132 @@ def run_paper_trading(args):
     run_live_trading(args)
 
 
+def run_dashboard(args):
+    """Run realtime web dashboard for monitoring"""
+    logger.info("=== DASHBOARD MODE ===")
+
+    # Initialize dashboard
+    dashboard = TradingDashboard(host='0.0.0.0', port=args.port)
+
+    # If demo mode, use mock data
+    if args.demo:
+        logger.info("Running dashboard in DEMO mode with sample data")
+        from src.reporting import generate_sample_trades
+
+        # Create mock components
+        class MockPortfolio:
+            def __init__(self):
+                self.initial_capital = 10000
+                self.capital_free = 8500
+                self.capital_allocated = 1500
+                self.positions = {
+                    'BTC Conservative': {
+                        'ladders': [
+                            {'level': -1, 'buy_price': 42000, 'quantity': 0.01, 'cost': 420, 'status': 'open', 'timestamp': datetime.now()},
+                            {'level': -2, 'buy_price': 41500, 'quantity': 0.02, 'cost': 830, 'status': 'open', 'timestamp': datetime.now()}
+                        ]
+                    }
+                }
+                self.trades_history = generate_sample_trades()
+
+            def get_statistics(self, prices):
+                import random
+                base_pnl = 250 + random.uniform(-50, 50)
+                return {
+                    'initial_capital': self.initial_capital,
+                    'capital_free': self.capital_free,
+                    'capital_allocated': self.capital_allocated,
+                    'total_value': 10000 + base_pnl,
+                    'realized_pnl': 180,
+                    'unrealized_pnl': base_pnl - 180,
+                    'total_pnl': base_pnl,
+                    'roi_percent': base_pnl / 100,
+                    'num_trades': len(self.trades_history),
+                    'num_open_positions': 2
+                }
+
+        class MockOrderManager:
+            def __init__(self):
+                self.active_orders = {
+                    'order1': {'type': 'BUY', 'symbol': 'BTCUSDT', 'price': 41000, 'quantity': 0.04, 'ladder': -3},
+                    'order2': {'type': 'SELL', 'symbol': 'BTCUSDT', 'price': 42500, 'quantity': 0.01, 'ladder': -1},
+                    'order3': {'type': 'BUY', 'symbol': 'ETHUSDT', 'price': 2200, 'quantity': 0.5, 'ladder': -2}
+                }
+
+        class MockStrategy:
+            def __init__(self, name, pair):
+                self.config = {'name': name, 'pair': pair, 'num_ladders': 6, 'base_gap_percent': 1.0}
+
+        # Set mock components
+        dashboard.portfolio = MockPortfolio()
+        dashboard.order_manager = MockOrderManager()
+        dashboard.strategies = [
+            MockStrategy('BTC Conservative', 'BTCUSDT'),
+            MockStrategy('ETH Balanced', 'ETHUSDT'),
+            MockStrategy('BNB Aggressive', 'BNBUSDT')
+        ]
+        dashboard.current_prices = {'BTCUSDT': 42150, 'ETHUSDT': 2250, 'BNBUSDT': 315}
+
+        print(f"\n{'='*60}")
+        print("BINANCE AUTO REBALANCE BOT - LIVE DASHBOARD")
+        print(f"{'='*60}")
+        print(f"Dashboard URL: http://localhost:{args.port}")
+        print(f"Mode: DEMO (sample data)")
+        print(f"{'='*60}\n")
+
+        dashboard.start(debug=False)
+
+    else:
+        # Connect to real trading bot
+        logger.info("Connecting to live trading system...")
+
+        # Initialize Binance client
+        use_testnet = args.mode == 'paper'
+        client = BinanceClient(testnet=use_testnet)
+
+        # Get initial balance
+        balance = client.get_account_balance('USDT')
+        total_capital = balance['free']
+        logger.info(f"Available capital: ${total_capital:.2f} USDT")
+
+        portfolio = Portfolio(total_capital)
+        order_manager = OrderManager(client, portfolio)
+
+        # Load strategies
+        strategies = load_strategies(args.strategies)
+
+        # Initialize strategies with current prices
+        for strategy in strategies:
+            current_price = client.get_current_price(strategy.config['pair'])
+            strategy.update_prices(current_price)
+            dashboard.current_prices[strategy.config['pair']] = current_price
+
+        # Set dashboard components
+        dashboard.set_trading_components(portfolio, strategies, order_manager, client)
+
+        print(f"\n{'='*60}")
+        print("BINANCE AUTO REBALANCE BOT - LIVE DASHBOARD")
+        print(f"{'='*60}")
+        print(f"Dashboard URL: http://localhost:{args.port}")
+        print(f"Mode: {'PAPER TRADING' if use_testnet else 'LIVE TRADING'}")
+        print(f"Strategies: {', '.join(s.config['name'] for s in strategies)}")
+        print(f"{'='*60}\n")
+
+        dashboard.start(debug=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Binance Auto Rebalance Bot')
-    parser.add_argument('--mode', choices=['live', 'paper', 'backtest'], required=True,
+    parser.add_argument('--mode', choices=['live', 'paper', 'backtest', 'dashboard'], required=True,
                        help='Trading mode')
-    parser.add_argument('--strategies', nargs='+', required=True,
+    parser.add_argument('--strategies', nargs='+', default=['all'],
                        help='Strategy names or "all"')
     parser.add_argument('--start', help='Backtest start date (YYYY-MM-DD)')
     parser.add_argument('--end', help='Backtest end date (YYYY-MM-DD)')
+    parser.add_argument('--port', type=int, default=5000,
+                       help='Dashboard web server port (default: 5000)')
+    parser.add_argument('--demo', action='store_true',
+                       help='Run dashboard in demo mode with sample data')
 
     args = parser.parse_args()
 
@@ -203,6 +322,8 @@ def main():
         run_live_trading(args)
     elif args.mode == 'paper':
         run_paper_trading(args)
+    elif args.mode == 'dashboard':
+        run_dashboard(args)
 
 
 if __name__ == '__main__':
