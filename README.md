@@ -90,9 +90,9 @@ python main.py --mode paper --strategies all
 
 ### Aggressive (High Risk)
 
-- Base Gap: 0.5%
+- Base Gap: 0.8%
 - Ladders: 10
-- Total Swing: 35%
+- Total Swing: 114.4%
 - Expected ROI: 15-25% per cycle
 
 ## Project Structure
