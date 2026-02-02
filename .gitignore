@@ -17,3 +17,6 @@ logs/*.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated charts
+examples/charts_output/
