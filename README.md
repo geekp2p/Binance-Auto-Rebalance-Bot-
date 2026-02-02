@@ -33,6 +33,86 @@ cp .env.example .env
 # Edit .env with your Binance API keys
 ```
 
+## Docker Installation
+
+You can also run the bot using Docker Compose.
+
+### Prerequisites
+
+- Docker Engine 20.10+
+- Docker Compose v2.0+
+
+### Quick Start with Docker
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/binance-auto-rebalance.git
+cd binance-auto-rebalance
+
+# Setup environment
+cp .env.example .env
+# Edit .env with your Binance API keys
+
+# Start the dashboard (default)
+docker compose up -d dashboard
+
+# Access the dashboard at http://localhost:5000
+```
+
+### Available Services
+
+| Service | Description | Port | Command |
+|---------|-------------|------|---------|
+| `dashboard` | Web dashboard for monitoring | 5000 | `docker compose up dashboard` |
+| `dashboard-demo` | Demo dashboard with sample data | 5001 | `docker compose --profile demo up dashboard-demo` |
+| `paper` | Paper trading (testnet) | - | `docker compose --profile paper up paper` |
+| `live` | Live trading (real money) | - | `docker compose --profile live up live` |
+
+### Docker Commands
+
+```bash
+# Start dashboard (default service)
+docker compose up -d dashboard
+
+# Start demo dashboard
+docker compose --profile demo up -d dashboard-demo
+
+# Start paper trading bot
+docker compose --profile paper up -d paper
+
+# Start live trading bot (USE WITH CAUTION!)
+docker compose --profile live up -d live
+
+# View logs
+docker compose logs -f dashboard
+
+# Stop all services
+docker compose down
+
+# Rebuild after code changes
+docker compose build --no-cache
+docker compose up -d dashboard
+```
+
+### Environment Variables (Docker)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DASHBOARD_PORT` | 5000 | Dashboard web UI port |
+| `DEMO_PORT` | 5001 | Demo dashboard port |
+| `BINANCE_API_KEY` | - | Your Binance API key |
+| `BINANCE_API_SECRET` | - | Your Binance API secret |
+| `BINANCE_TESTNET` | true | Use testnet (true) or live (false) |
+
+### Volume Mounts
+
+The following directories are mounted as volumes for data persistence:
+
+- `./logs` - Application logs
+- `./data` - Historical data and cache
+- `./charts_output` - Generated charts
+- `./config` - Strategy configurations (read-only)
+
 ## Configuration
 
 ### Strategy Configuration
@@ -247,8 +327,11 @@ T+15     $100,600   Ladder -1 SELL filled        Sell 0.01 BTC @ $100,600
 binance-auto-rebalance/
 ├── .env.example
 ├── .gitignore
+├── .dockerignore
 ├── README.md
 ├── requirements.txt
+├── Dockerfile
+├── compose.yml
 ├── config/
 │   ├── strategies/
 │   │   ├── btc_conservative.json
