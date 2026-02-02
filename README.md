@@ -90,10 +90,156 @@ python main.py --mode paper --strategies all
 
 ### Aggressive (High Risk)
 
-- Base Gap: 0.8%
+- Base Gap: 0.6%
 - Ladders: 10
-- Total Swing: 114.4%
+- Total Swing: 85.8%
 - Expected ROI: 15-25% per cycle
+
+## Complete Ladder Table (10 Ladders with 0.6% Base Gap)
+
+Reference Price: $100,000 BTC
+
+### BUY SIDE (Price Drops)
+
+| Ladder | Fib | Gap % | Cumulative % | Buy Price | Units | BTC | USDT Cost |
+|--------|-----|-------|--------------|-----------|-------|-----|-----------|
+| -1 | 1 | 0.60% | 0.60% | $99,400 | 1 | 0.01 | $994 |
+| -2 | 1 | 0.60% | 1.20% | $98,800 | 2 | 0.02 | $1,976 |
+| -3 | 2 | 1.20% | 2.40% | $97,600 | 4 | 0.04 | $3,904 |
+| -4 | 3 | 1.80% | 4.20% | $95,800 | 8 | 0.08 | $7,664 |
+| -5 | 5 | 3.00% | 7.20% | $92,800 | 16 | 0.16 | $14,848 |
+| -6 | 8 | 4.80% | 12.00% | $88,000 | 32 | 0.32 | $28,160 |
+| -7 | 13 | 7.80% | 19.80% | $80,200 | 64 | 0.64 | $51,328 |
+| -8 | 21 | 12.60% | 32.40% | $67,600 | 128 | 1.28 | $86,528 |
+| -9 | 34 | 20.40% | 52.80% | $47,200 | 256 | 2.56 | $120,832 |
+| -10 | 55 | 33.00% | 85.80% | $14,200 | 512 | 5.12 | $72,704 |
+
+**Total BUY Side: 10.23 BTC | $388,938 USDT**
+
+### SELL SIDE (Price Rises)
+
+| Ladder | Fib | Gap % | Cumulative % | Sell Price | Units | BTC | USDT Revenue |
+|--------|-----|-------|--------------|------------|-------|-----|--------------|
+| +1 | 1 | 0.60% | 0.60% | $100,600 | 1 | 0.01 | $1,006 |
+| +2 | 1 | 0.60% | 1.20% | $101,200 | 2 | 0.02 | $2,024 |
+| +3 | 2 | 1.20% | 2.40% | $102,400 | 4 | 0.04 | $4,096 |
+| +4 | 3 | 1.80% | 4.20% | $104,200 | 8 | 0.08 | $8,336 |
+| +5 | 5 | 3.00% | 7.20% | $107,200 | 16 | 0.16 | $17,152 |
+| +6 | 8 | 4.80% | 12.00% | $112,000 | 32 | 0.32 | $35,840 |
+| +7 | 13 | 7.80% | 19.80% | $119,800 | 64 | 0.64 | $76,672 |
+| +8 | 21 | 12.60% | 32.40% | $132,400 | 128 | 1.28 | $169,472 |
+| +9 | 34 | 20.40% | 52.80% | $152,800 | 256 | 2.56 | $391,168 |
+| +10 | 55 | 33.00% | 85.80% | $185,800 | 512 | 5.12 | $951,298 |
+
+**Total SELL Side: 10.23 BTC | $1,657,064 USDT**
+
+### Combined BUY + SELL Grid
+
+| Ladder | Buy Price | Reference | Sell Price | Profit/Unit |
+|--------|-----------|-----------|------------|-------------|
+| 10 | $14,200 | ← | $185,800 | +$1,716 |
+| 9 | $47,200 | ← | $152,800 | +$1,056 |
+| 8 | $67,600 | ← | $132,400 | +$648 |
+| 7 | $80,200 | ← | $119,800 | +$396 |
+| 6 | $88,000 | ← | $112,000 | +$240 |
+| 5 | $92,800 | ← | $107,200 | +$144 |
+| 4 | $95,800 | ← | $104,200 | +$84 |
+| 3 | $97,600 | ← | $102,400 | +$48 |
+| 2 | $98,800 | ← | $101,200 | +$24 |
+| 1 | $99,400 | $100,000 | $100,600 | +$12 |
+
+## Auto Rebalance Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    AUTO REBALANCE FLOW                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. INITIALIZATION                                              │
+│     └─► Load Strategy Config                                    │
+│     └─► Calculate all ladder prices                             │
+│     └─► Place BUY limit orders at all -1 to -10 levels          │
+│                                                                 │
+│  2. PRICE DROP                                                  │
+│     ┌──────────────────────────────────────────────────────┐    │
+│     │ Price drops to $99,400 → Ladder -1 BUY order FILLED  │    │
+│     │ System automatically:                                │    │
+│     │   • Records position in Portfolio                    │    │
+│     │   • Places SELL order at $100,600 (+1)               │    │
+│     │   • Updates ladder status to "active"                │    │
+│     └──────────────────────────────────────────────────────┘    │
+│                                                                 │
+│  3. PRICE RECOVERY                                              │
+│     ┌──────────────────────────────────────────────────────┐    │
+│     │ Price rises to $100,600 → SELL order FILLED          │    │
+│     │ System automatically:                                │    │
+│     │   • Closes position                                  │    │
+│     │   • Records profit: $12/unit                         │    │
+│     │   • Resets ladder status to "pending"                │    │
+│     │   • Places new BUY order at $99,400                  │    │
+│     └──────────────────────────────────────────────────────┘    │
+│                                                                 │
+│  4. CONTINUOUS CYCLE                                            │
+│     └─► rebalance_interval_hours: Check every 24 hours          │
+│     └─► check_interval_seconds: Monitor orders every 60 sec     │
+│     └─► price_update_interval: Update prices every 5 sec        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Auto Rebalance Example Scenario
+
+**BTC price drops from $100K → $80K → recovers to $100K**
+
+```
+Time     Price      Event                        Action
+─────────────────────────────────────────────────────────────
+T+0      $100,000   Start                        Place BUY orders (10 ladders)
+T+1      $99,400    Ladder -1 triggered          Buy 0.01 BTC @ $99,400
+                                                 → Place SELL @ $100,600
+T+2      $98,800    Ladder -2 triggered          Buy 0.02 BTC @ $98,800
+                                                 → Place SELL @ $99,400
+T+3      $97,600    Ladder -3 triggered          Buy 0.04 BTC @ $97,600
+                                                 → Place SELL @ $98,800
+...
+T+7      $80,200    Ladder -7 triggered          Buy 0.64 BTC @ $80,200
+                                                 → Place SELL @ $88,000
+
+─────────────────────────────────────────────────────────────
+                  *** Price Recovery ***
+─────────────────────────────────────────────────────────────
+
+T+10     $88,000    Ladder -7 SELL filled        Sell 0.64 BTC @ $88,000
+                                                 Profit: $4,992
+                                                 → Place new BUY @ $80,200
+T+11     $97,600    Ladder -3 SELL filled        Sell 0.04 BTC @ $98,800
+                                                 Profit: $48
+...
+T+15     $100,600   Ladder -1 SELL filled        Sell 0.01 BTC @ $100,600
+                                                 Profit: $12
+                                                 → Cycle restarts
+```
+
+### Configuration Parameters
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| auto_rebalance | true | Enable auto rebalance |
+| rebalance_interval_hours | 24 | Rebalance check interval |
+| min_profit_to_close | 0.005 | Minimum 0.5% profit to close |
+| check_interval_seconds | 60 | Order check interval |
+| price_update_interval | 5 | Price update interval |
+
+### Base Gap Comparison
+
+| Base Gap | Total Swing | Buy Price (Ladder 10) | Suitable For |
+|----------|-------------|----------------------|--------------|
+| 0.5% | 71.5% | $28,500 | Conservative |
+| 0.6% | 85.8% | $14,200 | Balanced |
+| 0.7% | 100.1% | ~$0 (invalid) | - |
+| 0.8% | 114.4% | Negative (invalid) | - |
+
+**Recommendation:** Use base_gap = 0.6% for 10 ladders to cover crashes up to -85.8%
 
 ## Project Structure
 
