@@ -14,9 +14,9 @@ def sample_config():
     """Create a sample strategy config - realistic 10 ladders with Fibonacci
 
     Uses real production values:
-    - base_gap: 0.5% (0.005) - realistic gap between ladders
+    - base_gap: 0.8% (0.008) - realistic gap between ladders
     - fibonacci: [1,1,2,3,5,8,13,21,34,55] - standard Fibonacci sequence
-    - Total swing: 71.5% at ladder 10
+    - Total swing: 114.4% at ladder 10
     """
     return {
         "enabled": True,
@@ -24,7 +24,7 @@ def sample_config():
         "pair": "BTCUSDT",
         "description": "Conservative BTC strategy with 10 Fibonacci ladders",
         "ladder_config": {
-            "base_gap": 0.005,  # 0.5% base gap (realistic)
+            "base_gap": 0.008,  # 0.8% base gap (realistic)
             "ladders": 10,
             "fibonacci": [1, 1, 2, 3, 5, 8, 13, 21, 34, 55],
             "unit_size_btc": 0.001
@@ -69,27 +69,27 @@ class TestStrategy:
     def test_ladder_calculation(self, strategy):
         """Test that 10 ladders are calculated correctly with Fibonacci gaps
 
-        With base_gap=0.5% and Fibonacci [1,1,2,3,5,8,13,21,34,55]:
-        - Ladder 1:  0.5% gap,  0.5% cumulative (buy at -0.5%)
-        - Ladder 2:  0.5% gap,  1.0% cumulative (buy at -1.0%)
-        - Ladder 3:  1.0% gap,  2.0% cumulative (buy at -2.0%)
-        - Ladder 4:  1.5% gap,  3.5% cumulative (buy at -3.5%)
-        - Ladder 5:  2.5% gap,  6.0% cumulative (buy at -6.0%)
-        - Ladder 6:  4.0% gap, 10.0% cumulative (buy at -10.0%)
-        - Ladder 7:  6.5% gap, 16.5% cumulative (buy at -16.5%)
-        - Ladder 8: 10.5% gap, 27.0% cumulative (buy at -27.0%)
-        - Ladder 9: 17.0% gap, 44.0% cumulative (buy at -44.0%)
-        - Ladder 10: 27.5% gap, 71.5% cumulative (buy at -71.5%)
+        With base_gap=0.8% and Fibonacci [1,1,2,3,5,8,13,21,34,55]:
+        - Ladder 1:  0.8% gap,  0.8% cumulative (buy at -0.8%)
+        - Ladder 2:  0.8% gap,  1.6% cumulative (buy at -1.6%)
+        - Ladder 3:  1.6% gap,  3.2% cumulative (buy at -3.2%)
+        - Ladder 4:  2.4% gap,  5.6% cumulative (buy at -5.6%)
+        - Ladder 5:  4.0% gap,  9.6% cumulative (buy at -9.6%)
+        - Ladder 6:  6.4% gap, 16.0% cumulative (buy at -16.0%)
+        - Ladder 7: 10.4% gap, 26.4% cumulative (buy at -26.4%)
+        - Ladder 8: 16.8% gap, 43.2% cumulative (buy at -43.2%)
+        - Ladder 9: 27.2% gap, 70.4% cumulative (buy at -70.4%)
+        - Ladder 10: 44.0% gap, 114.4% cumulative (buy at -114.4%)
         """
         assert len(strategy.ladders) == 10
 
         # Check first ladder
         assert strategy.ladders[0]['level'] == -1
         assert strategy.ladders[0]['fibonacci'] == 1
-        assert strategy.ladders[0]['gap_percent'] == 0.005  # 0.5%
+        assert strategy.ladders[0]['gap_percent'] == 0.008  # 0.8%
 
-        # Check cumulative gaps (Fibonacci: 1,1,2,3,5,8,13,21,34,55 × 0.005)
-        expected_gaps = [0.005, 0.01, 0.02, 0.035, 0.06, 0.10, 0.165, 0.27, 0.44, 0.715]
+        # Check cumulative gaps (Fibonacci: 1,1,2,3,5,8,13,21,34,55 × 0.008)
+        expected_gaps = [0.008, 0.016, 0.032, 0.056, 0.096, 0.16, 0.264, 0.432, 0.704, 1.144]
         for i, ladder in enumerate(strategy.ladders):
             assert abs(ladder['cumulative_gap_percent'] - expected_gaps[i]) < 0.0001
 
