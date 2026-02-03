@@ -2,6 +2,7 @@
 Binance API Client Wrapper
 """
 import os
+from decimal import Decimal, ROUND_DOWN
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from dotenv import load_dotenv
@@ -22,8 +23,58 @@ class BinanceClient:
 
         self.client = Client(api_key, api_secret, testnet=testnet)
         self.testnet = testnet
+        self._symbol_filters = {}  # Cache for symbol filter info
 
         logger.info(f"Binance client initialized (testnet={testnet})")
+
+    def get_symbol_filters(self, symbol):
+        """Fetch and cache symbol exchange filters (tick size, lot size, min notional)"""
+        if symbol in self._symbol_filters:
+            return self._symbol_filters[symbol]
+
+        try:
+            info = self.client.get_symbol_info(symbol)
+            if not info:
+                raise ValueError(f"Symbol {symbol} not found on exchange")
+
+            filters = {}
+            for f in info['filters']:
+                if f['filterType'] == 'PRICE_FILTER':
+                    filters['tick_size'] = f['tickSize']
+                    filters['min_price'] = f['minPrice']
+                    filters['max_price'] = f['maxPrice']
+                elif f['filterType'] == 'LOT_SIZE':
+                    filters['step_size'] = f['stepSize']
+                    filters['min_qty'] = f['minQty']
+                    filters['max_qty'] = f['maxQty']
+                elif f['filterType'] == 'NOTIONAL':
+                    filters['min_notional'] = f.get('minNotional', '0')
+
+            self._symbol_filters[symbol] = filters
+            logger.info(f"Symbol filters for {symbol}: tick_size={filters.get('tick_size')}, step_size={filters.get('step_size')}")
+            return filters
+        except BinanceAPIException as e:
+            logger.error(f"Error fetching symbol info for {symbol}: {e}")
+            raise
+
+    @staticmethod
+    def _round_to_step(value, step_size):
+        """Round a value down to the nearest step size"""
+        step = Decimal(str(step_size))
+        val = Decimal(str(value))
+        return float(val.quantize(step, rounding=ROUND_DOWN))
+
+    def round_price(self, symbol, price):
+        """Round price to comply with PRICE_FILTER tick size"""
+        filters = self.get_symbol_filters(symbol)
+        tick_size = filters.get('tick_size', '0.01')
+        return self._round_to_step(price, tick_size)
+
+    def round_quantity(self, symbol, quantity):
+        """Round quantity to comply with LOT_SIZE step size"""
+        filters = self.get_symbol_filters(symbol)
+        step_size = filters.get('step_size', '0.001')
+        return self._round_to_step(quantity, step_size)
 
     def get_current_price(self, symbol):
         """Get current market price for a symbol"""
@@ -48,32 +99,48 @@ class BinanceClient:
             raise
 
     def create_limit_order(self, symbol, side, quantity, price):
-        """Create a limit order"""
+        """Create a limit order with automatic precision rounding"""
         try:
+            # Round price and quantity to comply with exchange filters
+            rounded_price = self.round_price(symbol, price)
+            rounded_qty = self.round_quantity(symbol, quantity)
+
+            if rounded_qty <= 0:
+                raise ValueError(f"Quantity {quantity} rounds to 0 for {symbol} (step_size too large)")
+            if rounded_price <= 0:
+                raise ValueError(f"Price {price} rounds to 0 for {symbol} (tick_size too large)")
+
+            logger.debug(f"Order precision: price {price} -> {rounded_price}, qty {quantity} -> {rounded_qty}")
+
             order = self.client.create_order(
                 symbol=symbol,
                 side=side,  # 'BUY' or 'SELL'
                 type='LIMIT',
                 timeInForce='GTC',
-                quantity=quantity,
-                price=price
+                quantity=str(rounded_qty),
+                price=str(rounded_price)
             )
-            logger.info(f"Order created: {side} {quantity} {symbol} @ {price}")
+            logger.info(f"Order created: {side} {rounded_qty} {symbol} @ {rounded_price}")
             return order
         except BinanceAPIException as e:
             logger.error(f"Error creating order: {e}")
             raise
 
     def create_market_order(self, symbol, side, quantity):
-        """Create a market order"""
+        """Create a market order with automatic precision rounding"""
         try:
+            rounded_qty = self.round_quantity(symbol, quantity)
+
+            if rounded_qty <= 0:
+                raise ValueError(f"Quantity {quantity} rounds to 0 for {symbol} (step_size too large)")
+
             order = self.client.create_order(
                 symbol=symbol,
                 side=side,
                 type='MARKET',
-                quantity=quantity
+                quantity=str(rounded_qty)
             )
-            logger.info(f"Market order created: {side} {quantity} {symbol}")
+            logger.info(f"Market order created: {side} {rounded_qty} {symbol}")
             return order
         except BinanceAPIException as e:
             logger.error(f"Error creating market order: {e}")
