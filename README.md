@@ -71,6 +71,51 @@ docker compose up -d dashboard
 ### Docker Commands
 
 ```bash
+# 1. Build
+docker build -t binance-dcr-bot .
+
+# 2. Run DCR Live
+docker-compose up dcr-live
+
+# หรือรันแบบ background
+docker-compose up -d dcr-live
+
+# 3. View logs
+docker logs -f binance-dcr-live
+```
+
+### Docker Operations Reference
+
+| Operation | Command |
+|-----------|---------|
+| Run DCR Live | `docker-compose up dcr-live` |
+| Run DCR Live (background) | `docker-compose up -d dcr-live` |
+| Run Simulation | `docker-compose --profile simulation up dcr-simulation` |
+| Run Dashboard | `docker-compose --profile dashboard up dashboard` |
+| Stop Bot | `docker-compose down` |
+| View Status | `docker ps` |
+| Restart Bot | `docker restart binance-dcr-live` |
+| View Logs | `docker logs -f binance-dcr-live` |
+
+### Docker Cleanup
+
+To clean up Docker resources related to this project:
+
+```bash
+# 1. Stop and remove containers/volumes/networks for this project
+docker-compose down --volumes --remove-orphans
+
+# 2. Remove the built image
+docker image rm binance-dcr-bot
+
+# 3. (Optional) Full system cleanup - removes ALL unused Docker resources
+# ⚠️ Warning: This affects all Docker projects, not just this one
+docker system prune -a --volumes
+```
+
+### Legacy Docker Commands
+
+```bash
 # Start dashboard (default service)
 docker compose up -d dashboard
 
