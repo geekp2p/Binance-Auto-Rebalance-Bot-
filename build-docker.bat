@@ -27,11 +27,23 @@ if %ERRORLEVEL% EQU 0 (
     echo  BUILD SUCCESSFUL!
     echo ============================================================
     echo.
-    echo Run your container with:
-    echo   docker run -d --name binance-bot binance-dcr-bot
+    echo IMPORTANT: You must provide your .env file when running the container.
     echo.
-    echo Or run interactively:
-    echo   docker run -it --rm binance-dcr-bot
+    echo Option 1 - Mount your .env file (RECOMMENDED):
+    echo   docker run -d --name binance-bot -p 5000:5000 --env-file .env binance-dcr-bot
+    echo.
+    echo Option 2 - Pass environment variables directly:
+    echo   docker run -d --name binance-bot -p 5000:5000 ^
+    echo     -e BINANCE_API_KEY=your_key ^
+    echo     -e BINANCE_API_SECRET=your_secret ^
+    echo     -e BINANCE_TESTNET=true ^
+    echo     binance-dcr-bot
+    echo.
+    echo Run interactively (for testing):
+    echo   docker run -it --rm -p 5000:5000 --env-file .env binance-dcr-bot
+    echo.
+    echo To stop and remove the container:
+    echo   docker stop binance-bot ^&^& docker rm binance-bot
     echo.
 ) else (
     echo.
