@@ -42,3 +42,4 @@ Dockerfile
 compose.yml
 docker-compose*.yml
 .dockerignore
+docker-build.bat

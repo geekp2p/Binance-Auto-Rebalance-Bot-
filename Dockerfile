@@ -1,20 +1,20 @@
+# syntax=docker/dockerfile:1
 FROM python:3.12-slim
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install Python dependencies first (wheels available for all packages)
-# NOTE: If build fails with pthread_create error on Windows, run:
-#   set DOCKER_BUILDKIT=0
-#   docker build -t binance-dcr-bot .
+# Install Python dependencies
+# Using --no-compile and single-threaded pip to avoid resource exhaustion on Windows Docker
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-compile -r requirements.txt && \
+    find /usr/local -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-# Copy application code
+# Copy application code and create directories in single layer
 COPY . /app/
-
-# Create directories for data persistence
 RUN mkdir -p /app/logs /app/data/historical /app/charts_output
 
 EXPOSE 5000
