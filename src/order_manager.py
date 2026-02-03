@@ -14,6 +14,7 @@ class OrderManager:
         self.portfolio = portfolio
         self.active_orders = {}  # {order_id: order_details}
         self._sequential_state = {}  # {strategy_name: {next_level_idx, last_order_time}}
+        self._insufficient_balance_warned = {}  # {strategy_name: level} - track warned levels to avoid spam
 
     def place_ladder_buy_orders(self, strategy, current_price):
         """Place buy orders for all pending ladders, respecting balance and exchange filters"""
@@ -176,8 +177,12 @@ class OrderManager:
 
         estimated_cost = ladder['buy_price'] * ladder['btc_amount']
         if estimated_cost > available_usdt:
-            logger.warning(f"[{strategy_name}] Skipping level {ladder['level']}: "
-                         f"need ${estimated_cost:.2f} but only ${available_usdt:.2f} USDT available")
+            # Only warn once per level to avoid spamming logs every 30s
+            warned_level = self._insufficient_balance_warned.get(strategy_name)
+            if warned_level != ladder['level']:
+                logger.warning(f"[{strategy_name}] Waiting for balance for level {ladder['level']}: "
+                             f"need ${estimated_cost:.2f} but only ${available_usdt:.2f} USDT available")
+                self._insufficient_balance_warned[strategy_name] = ladder['level']
             return None
 
         # Check PERCENT_PRICE_BY_SIDE filter
@@ -207,6 +212,9 @@ class OrderManager:
                 self._sequential_state[strategy_name]['next_level_idx'] += 1
                 self._sequential_state[strategy_name]['approaching_since'] = None
 
+            # Clear insufficient balance warning since we successfully placed
+            self._insufficient_balance_warned.pop(strategy_name, None)
+
             logger.info(f"[{strategy_name}] Sequential buy order placed: "
                        f"Level {ladder['level']} @ ${ladder['buy_price']:.2f}")
             return order
@@ -219,10 +227,30 @@ class OrderManager:
         """Reset sequential placement state for a strategy (e.g., on new cycle)."""
         if strategy_name in self._sequential_state:
             del self._sequential_state[strategy_name]
+        self._insufficient_balance_warned.pop(strategy_name, None)
 
     def is_sequential_mode(self, strategy):
         """Check if a strategy uses sequential order placement."""
         return strategy.config.get('order_placement', {}).get('mode') == 'sequential'
+
+    def log_planned_ladders(self, strategy):
+        """Log all planned ladder levels with prices so user knows what will be placed."""
+        strategy_name = strategy.config['name']
+        pending = strategy.get_pending_ladders()
+        if not pending:
+            return
+
+        logger.info(f"[{strategy_name}] Planned ladder levels (orders will be placed one at a time as price approaches):")
+        for ladder in pending:
+            buy_price = ladder.get('buy_price', 0)
+            sell_price = ladder.get('sell_price', 0)
+            usdt_cost = ladder.get('usdt_cost', 0)
+            units = ladder.get('units', 0)
+            amount = ladder.get('btc_amount', 0)
+            logger.info(f"  Level {ladder['level']:>3}: BUY @ ${buy_price:>10.2f} | "
+                       f"SELL @ ${sell_price:>10.2f} | "
+                       f"Cost: ${usdt_cost:>10.2f} | "
+                       f"Qty: {amount:.4f} ({units}x)")
 
     def place_sell_order(self, strategy, ladder):
         """Place sell order for an active ladder"""

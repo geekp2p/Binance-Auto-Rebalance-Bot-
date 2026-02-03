@@ -32,5 +32,11 @@
     "auto_rebalance": true,
     "rebalance_interval_hours": 12,
     "min_profit_to_close": 0.005
+  },
+
+  "order_placement": {
+    "mode": "sequential",
+    "proximity_percent": 0.015,
+    "delay_seconds": 45
   }
 }
