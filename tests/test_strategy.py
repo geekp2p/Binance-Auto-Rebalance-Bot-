@@ -16,7 +16,7 @@ def sample_config():
     Uses real production values:
     - base_gap: 0.8% (0.008) - realistic gap between ladders
     - fibonacci: [1,1,2,3,5,8,13,21,34,55] - standard Fibonacci sequence
-    - Total swing: 114.4% at ladder 10
+    - Compound formula: buy_multiplier = ∏(1 - gap_i)
     """
     return {
         "enabled": True,
@@ -67,19 +67,22 @@ class TestStrategy:
         assert strategy.config['pair'] == sample_config['pair']
 
     def test_ladder_calculation(self, strategy):
-        """Test that 10 ladders are calculated correctly with Fibonacci gaps
+        """Test that 10 ladders are calculated correctly with compound Fibonacci gaps
 
-        With base_gap=0.8% and Fibonacci [1,1,2,3,5,8,13,21,34,55]:
-        - Ladder 1:  0.8% gap,  0.8% cumulative (buy at -0.8%)
-        - Ladder 2:  0.8% gap,  1.6% cumulative (buy at -1.6%)
-        - Ladder 3:  1.6% gap,  3.2% cumulative (buy at -3.2%)
-        - Ladder 4:  2.4% gap,  5.6% cumulative (buy at -5.6%)
-        - Ladder 5:  4.0% gap,  9.6% cumulative (buy at -9.6%)
-        - Ladder 6:  6.4% gap, 16.0% cumulative (buy at -16.0%)
-        - Ladder 7: 10.4% gap, 26.4% cumulative (buy at -26.4%)
-        - Ladder 8: 16.8% gap, 43.2% cumulative (buy at -43.2%)
-        - Ladder 9: 27.2% gap, 70.4% cumulative (buy at -70.4%)
-        - Ladder 10: 44.0% gap, 114.4% cumulative (buy at -114.4%)
+        With base_gap=0.8%, Fibonacci [1,1,2,3,5,8,13,21,34,55]:
+        Compound formula: buy_multiplier = ∏(1 - base_gap * fib_i)
+
+        Level  Fib  Gap      Multiplier    Cumulative Drop
+        -1     1    0.8%     0.992000      0.8%
+        -2     1    0.8%     0.984064      1.6%
+        -3     2    1.6%     0.968319      3.2%
+        -4     3    2.4%     0.945079      5.5%
+        -5     5    4.0%     0.907276      9.3%
+        -6     8    6.4%     0.849210      15.1%
+        -7     13   10.4%    0.760892      23.9%
+        -8     21   16.8%    0.633062      36.7%
+        -9     34   27.2%    0.460869      53.9%
+        -10    55   44.0%    0.258087      74.2%
         """
         assert len(strategy.ladders) == 10
 
@@ -88,10 +91,16 @@ class TestStrategy:
         assert strategy.ladders[0]['fibonacci'] == 1
         assert strategy.ladders[0]['gap_percent'] == 0.008  # 0.8%
 
-        # Check cumulative gaps (Fibonacci: 1,1,2,3,5,8,13,21,34,55 × 0.008)
-        expected_gaps = [0.008, 0.016, 0.032, 0.056, 0.096, 0.16, 0.264, 0.432, 0.704, 1.144]
-        for i, ladder in enumerate(strategy.ladders):
-            assert abs(ladder['cumulative_gap_percent'] - expected_gaps[i]) < 0.0001
+        # Compute expected compound multipliers
+        base_gap = 0.008
+        fibonacci = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
+        expected_multiplier = 1.0
+        for i, fib in enumerate(fibonacci):
+            gap = base_gap * fib
+            expected_multiplier *= (1 - gap)
+            expected_cumulative = 1 - expected_multiplier
+            assert abs(strategy.ladders[i]['cumulative_gap_percent'] - expected_cumulative) < 0.0001
+            assert strategy.ladders[i]['buy_price_multiplier'] > 0  # Never negative
 
         # Check all ladder levels are negative (buy below market)
         for i, ladder in enumerate(strategy.ladders):

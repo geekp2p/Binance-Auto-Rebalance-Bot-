@@ -22,38 +22,39 @@ class Strategy:
         return config
 
     def _calculate_ladders(self):
-        """Calculate ladder levels based on Fibonacci gaps"""
+        """Calculate ladder levels using compound multiplicative gaps.
+
+        Instead of additive gaps (which can exceed 100% and produce negative prices),
+        each level's gap is applied to the remaining price:
+            buy_multiplier = (1 - gap₁) × (1 - gap₂) × (1 - gap₃) × ...
+
+        This guarantees buy_multiplier stays positive (never reaches zero).
+        """
         ladder_config = self.config['ladder_config']
         base_gap = ladder_config['base_gap']
         fibonacci = ladder_config['fibonacci']
         num_ladders = ladder_config['ladders']
 
-        # Placeholder starting price (will be updated with real price)
-        starting_price = 50000  # This will be set dynamically
-
-        cumulative_gap = 0
+        buy_multiplier = 1.0
         self.ladders = []
-        truncated = False
 
         for i in range(num_ladders):
             fib = fibonacci[i]
             gap = base_gap * fib
-            cumulative_gap += gap
 
-            # Stop if buy price would go to zero or negative
-            if cumulative_gap >= 1.0:
-                truncated = True
-                logger.warning(f"Truncating ladders at level {-(i+1)}: cumulative gap {cumulative_gap:.2%} "
-                             f"would produce negative prices. Only {i} of {num_ladders} levels created.")
-                break
+            prev_multiplier = buy_multiplier
+            buy_multiplier *= (1 - gap)  # Compound: multiply remaining price
+
+            # Sell price multiplier is the previous level's buy multiplier
+            sell_multiplier = prev_multiplier if i > 0 else 1.0
 
             ladder = {
                 'level': -(i + 1),
                 'fibonacci': fib,
                 'gap_percent': gap,
-                'cumulative_gap_percent': cumulative_gap,
-                'buy_price_multiplier': 1 - cumulative_gap,
-                'sell_price_multiplier': 1 - (cumulative_gap - gap) if i > 0 else 1.0,
+                'cumulative_gap_percent': 1 - buy_multiplier,  # Total drop from starting price
+                'buy_price_multiplier': buy_multiplier,
+                'sell_price_multiplier': sell_multiplier,
                 'units': 2 ** i,  # Martingale: 1, 2, 4, 8, 16, 32...
                 'status': 'pending'
             }
