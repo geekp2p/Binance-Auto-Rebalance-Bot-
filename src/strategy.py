@@ -56,15 +56,20 @@ class Strategy:
 
     def update_prices(self, current_price):
         """Update ladder prices based on current market price"""
+        # Calculate base USDT per unit at level -1 for true Martingale
+        first_ladder_buy_price = current_price * self.ladders[0]['buy_price_multiplier']
+        unit_size_key = f"unit_size_{self.config['pair'][:3].lower()}"
+        unit_size = self.config['ladder_config'].get(unit_size_key, 0.01)
+        base_usdt_per_unit = first_ladder_buy_price * unit_size
+
         for ladder in self.ladders:
             ladder['buy_price'] = current_price * ladder['buy_price_multiplier']
             ladder['sell_price'] = current_price * ladder['sell_price_multiplier']
 
-            # Calculate unit size in base currency
-            unit_size_key = f"unit_size_{self.config['pair'][:3].lower()}"
-            unit_size = self.config['ladder_config'].get(unit_size_key, 0.01)
-            ladder['btc_amount'] = ladder['units'] * unit_size
-            ladder['usdt_cost'] = ladder['btc_amount'] * ladder['buy_price']
+            # True Martingale: USDT cost doubles each level (units × base_usdt_per_unit)
+            ladder['usdt_cost'] = ladder['units'] * base_usdt_per_unit
+            # Calculate BTC amount based on USDT cost and buy price
+            ladder['btc_amount'] = ladder['usdt_cost'] / ladder['buy_price']
 
     def get_active_ladders(self):
         """Get ladders that are currently active (bought but not sold)"""
