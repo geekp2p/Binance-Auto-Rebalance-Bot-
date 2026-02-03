@@ -33,11 +33,19 @@ class Strategy:
 
         cumulative_gap = 0
         self.ladders = []
+        truncated = False
 
         for i in range(num_ladders):
             fib = fibonacci[i]
             gap = base_gap * fib
             cumulative_gap += gap
+
+            # Stop if buy price would go to zero or negative
+            if cumulative_gap >= 1.0:
+                truncated = True
+                logger.warning(f"Truncating ladders at level {-(i+1)}: cumulative gap {cumulative_gap:.2%} "
+                             f"would produce negative prices. Only {i} of {num_ladders} levels created.")
+                break
 
             ladder = {
                 'level': -(i + 1),
@@ -52,7 +60,8 @@ class Strategy:
 
             self.ladders.append(ladder)
 
-        logger.info(f"Calculated {num_ladders} ladders with total swing: {cumulative_gap:.2%}")
+        logger.info(f"Calculated {len(self.ladders)} ladders with total swing: "
+                    f"{self.ladders[-1]['cumulative_gap_percent']:.2%}" if self.ladders else "No ladders calculated")
 
     def update_prices(self, current_price):
         """Update ladder prices based on current market price"""
@@ -65,6 +74,11 @@ class Strategy:
         for ladder in self.ladders:
             ladder['buy_price'] = current_price * ladder['buy_price_multiplier']
             ladder['sell_price'] = current_price * ladder['sell_price_multiplier']
+
+            if ladder['buy_price'] <= 0 or ladder['sell_price'] <= 0:
+                logger.error(f"Invalid price at level {ladder['level']}: "
+                           f"buy=${ladder['buy_price']:.2f}, sell=${ladder['sell_price']:.2f}. Skipping.")
+                continue
 
             # True Martingale: USDT cost doubles each level (units × base_usdt_per_unit)
             ladder['usdt_cost'] = ladder['units'] * base_usdt_per_unit
