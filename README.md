@@ -250,6 +250,9 @@ docker-compose --profile dcr up -d
 docker run -d --name binance-btc-live --env-file .env -v $(pwd)/logs:/app/logs -v $(pwd)/data:/app/data binance-dcr-bot python main.py --mode live --symbol BTC/USDT
 docker run -d --name binance-eth-live --env-file .env -v $(pwd)/logs:/app/logs -v $(pwd)/data:/app/data binance-dcr-bot python main.py --mode live --symbol ETH/USDT
 docker run -d --name binance-dcr-live --env-file .env -v $(pwd)/logs:/app/logs -v $(pwd)/data:/app/data binance-dcr-bot python main.py --mode live --symbol DCR/USDT
+
+docker run --name binance-bot -p 5000:5000 --env-file .env binance-dcr-bot python main.py --mode dashboard --port 5000 --strategies dcr_balanced
+
 ```
 
 ### Quick Reference Table
