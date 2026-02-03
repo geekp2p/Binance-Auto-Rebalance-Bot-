@@ -79,6 +79,20 @@ class Strategy:
         """Get ladders that are waiting to be triggered"""
         return [l for l in self.ladders if l['status'] == 'pending']
 
+    def all_ladders_closed(self):
+        """Check if all ladders have completed their cycle (all closed)"""
+        return all(l['status'] == 'closed' for l in self.ladders if l['status'] != 'pending') and \
+               any(l['status'] == 'closed' for l in self.ladders)
+
+    def reset_ladders(self):
+        """Reset all closed ladders back to pending for a new cycle"""
+        reset_count = 0
+        for ladder in self.ladders:
+            if ladder['status'] == 'closed':
+                ladder['status'] = 'pending'
+                reset_count += 1
+        logger.info(f"Reset {reset_count} ladders to pending for new cycle")
+
     def calculate_required_capital(self):
         """Calculate total capital required if all ladders are triggered"""
         return sum(ladder['usdt_cost'] for ladder in self.ladders)
