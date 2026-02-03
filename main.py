@@ -118,9 +118,13 @@ def run_live_trading(args):
         strategy.update_prices(current_price)
         logger.info(f"Initialized {strategy.config['name']} at ${current_price:.2f}")
 
-        # Place initial ladder orders based on placement mode
+        # Log all planned ladder levels so user can see the plan
+        order_manager.log_planned_ladders(strategy)
+
+        # Place initial order (sequential: only first order, normal: all at once)
         if order_manager.is_sequential_mode(strategy):
-            logger.info(f"{strategy.config['name']}: Sequential mode - placing first order only")
+            logger.info(f"{strategy.config['name']}: Sequential mode - placing first order only, "
+                       f"next orders will be placed as price approaches each level")
             order_manager.place_next_sequential_order(strategy, current_price)
         else:
             order_manager.place_ladder_buy_orders(strategy, current_price)
@@ -176,6 +180,7 @@ def run_live_trading(args):
                                 f"starting new cycle at ${current_price:.2f} ===")
                     strategy.reset_ladders()
                     strategy.update_prices(current_price)
+                    order_manager.log_planned_ladders(strategy)
                     if order_manager.is_sequential_mode(strategy):
                         order_manager.reset_sequential_state(strategy.config['name'])
                         order_manager.place_next_sequential_order(strategy, current_price)
