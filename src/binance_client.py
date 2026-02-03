@@ -28,7 +28,7 @@ class BinanceClient:
         logger.info(f"Binance client initialized (testnet={testnet})")
 
     def get_symbol_filters(self, symbol):
-        """Fetch and cache symbol exchange filters (tick size, lot size, min notional)"""
+        """Fetch and cache symbol exchange filters (tick size, lot size, min notional, percent price)"""
         if symbol in self._symbol_filters:
             return self._symbol_filters[symbol]
 
@@ -49,6 +49,11 @@ class BinanceClient:
                     filters['max_qty'] = f['maxQty']
                 elif f['filterType'] == 'NOTIONAL':
                     filters['min_notional'] = f.get('minNotional', '0')
+                elif f['filterType'] == 'PERCENT_PRICE_BY_SIDE':
+                    filters['bid_multiplier_down'] = float(f['bidMultiplierDown'])
+                    filters['bid_multiplier_up'] = float(f['bidMultiplierUp'])
+                    filters['ask_multiplier_down'] = float(f['askMultiplierDown'])
+                    filters['ask_multiplier_up'] = float(f['askMultiplierUp'])
 
             self._symbol_filters[symbol] = filters
             logger.info(f"Symbol filters for {symbol}: tick_size={filters.get('tick_size')}, step_size={filters.get('step_size')}")
@@ -81,6 +86,32 @@ class BinanceClient:
         filters = self.get_symbol_filters(symbol)
         step_size = filters.get('step_size', '0.001')
         return self._round_to_step(quantity, step_size)
+
+    def check_percent_price_filter(self, symbol, side, price):
+        """Check if price passes PERCENT_PRICE_BY_SIDE filter.
+        Returns (ok, reason) tuple."""
+        filters = self.get_symbol_filters(symbol)
+        bid_down = filters.get('bid_multiplier_down')
+        if bid_down is None:
+            return True, ""  # Filter not present for this symbol
+
+        # Get weighted average price used by Binance for this filter
+        try:
+            avg_price = float(self.client.get_avg_price(symbol=symbol)['price'])
+        except Exception:
+            return True, ""  # Can't validate, let exchange decide
+
+        if side == 'BUY':
+            min_price = avg_price * filters['bid_multiplier_down']
+            max_price = avg_price * filters['bid_multiplier_up']
+        else:
+            min_price = avg_price * filters['ask_multiplier_down']
+            max_price = avg_price * filters['ask_multiplier_up']
+
+        if price < min_price or price > max_price:
+            return False, (f"price ${price:.2f} outside PERCENT_PRICE_BY_SIDE range "
+                          f"[${min_price:.2f}, ${max_price:.2f}] (avg=${avg_price:.2f})")
+        return True, ""
 
     def get_current_price(self, symbol):
         """Get current market price for a symbol"""

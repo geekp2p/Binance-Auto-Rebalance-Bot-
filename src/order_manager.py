@@ -15,33 +15,70 @@ class OrderManager:
         self.active_orders = {}  # {order_id: order_details}
 
     def place_ladder_buy_orders(self, strategy, current_price):
-        """Place buy orders for all pending ladders"""
+        """Place buy orders for all pending ladders, respecting balance and exchange filters"""
         orders_placed = []
+        skipped_balance = 0
+        skipped_price_filter = 0
+
+        # Get current available USDT balance from exchange
+        try:
+            balance = self.client.get_account_balance('USDT')
+            available_usdt = balance['free']
+        except Exception as e:
+            logger.error(f"Cannot fetch USDT balance, aborting order placement: {e}")
+            return orders_placed
+
+        symbol = strategy.config['pair']
 
         for ladder in strategy.get_pending_ladders():
-            if ladder['buy_price'] < current_price:
-                # Only place orders below current price
-                try:
-                    order = self.client.create_limit_order(
-                        symbol=strategy.config['pair'],
-                        side='BUY',
-                        quantity=ladder['btc_amount'],
-                        price=ladder['buy_price']
-                    )
+            if ladder['buy_price'] >= current_price:
+                continue  # Only place orders below current price
 
-                    self.active_orders[order['orderId']] = {
-                        'strategy': strategy.config['name'],
-                        'level': ladder['level'],
-                        'type': 'BUY',
-                        'order': order,
-                        'ladder': ladder
-                    }
+            # Estimate order cost (price × quantity)
+            estimated_cost = ladder['buy_price'] * ladder['btc_amount']
 
-                    orders_placed.append(order)
-                    logger.info(f"Buy order placed: Level {ladder['level']} @ ${ladder['buy_price']:.2f}")
+            # Check if we have enough balance
+            if estimated_cost > available_usdt:
+                skipped_balance += 1
+                logger.warning(f"Skipping level {ladder['level']}: need ${estimated_cost:.2f} "
+                             f"but only ${available_usdt:.2f} USDT available")
+                continue
 
-                except Exception as e:
-                    logger.error(f"Failed to place buy order for level {ladder['level']}: {e}")
+            # Check PERCENT_PRICE_BY_SIDE filter
+            ok, reason = self.client.check_percent_price_filter(symbol, 'BUY', ladder['buy_price'])
+            if not ok:
+                skipped_price_filter += 1
+                logger.warning(f"Skipping level {ladder['level']}: {reason}")
+                continue
+
+            try:
+                order = self.client.create_limit_order(
+                    symbol=symbol,
+                    side='BUY',
+                    quantity=ladder['btc_amount'],
+                    price=ladder['buy_price']
+                )
+
+                self.active_orders[order['orderId']] = {
+                    'strategy': strategy.config['name'],
+                    'level': ladder['level'],
+                    'type': 'BUY',
+                    'order': order,
+                    'ladder': ladder
+                }
+
+                orders_placed.append(order)
+                available_usdt -= estimated_cost  # Track remaining balance
+                logger.info(f"Buy order placed: Level {ladder['level']} @ ${ladder['buy_price']:.2f}")
+
+            except Exception as e:
+                logger.error(f"Failed to place buy order for level {ladder['level']}: {e}")
+
+        # Summary
+        total = len(strategy.get_pending_ladders())
+        logger.info(f"Order placement summary: {len(orders_placed)}/{total} placed"
+                    + (f", {skipped_balance} skipped (insufficient balance)" if skipped_balance else "")
+                    + (f", {skipped_price_filter} skipped (price filter)" if skipped_price_filter else ""))
 
         return orders_placed
 
