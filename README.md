@@ -33,6 +33,84 @@ cp .env.example .env
 # Edit .env with your Binance API keys
 ```
 
+## Environment Variables (.env)
+
+The `.env` file contains all configuration for the bot. Copy `.env.example` to `.env` and configure the following variables:
+
+### Binance API Credentials
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `BINANCE_API_KEY` | Yes | Your Binance API key (get from Binance > API Management) |
+| `BINANCE_API_SECRET` | Yes | Your Binance API secret |
+| `BINANCE_TESTNET` | No | Use testnet (`true`) or mainnet (`false`). Default: `true` |
+
+### Trading Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TOTAL_CAPITAL_USDT` | 10000 | Total capital in USDT for trading |
+| `MAX_ALLOCATION_PER_COIN` | 0.20 | Maximum allocation per coin (20% = 0.20) |
+
+### Risk Management
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STOP_LOSS_PERCENT` | 25 | Stop-loss percentage (25 = -25%) |
+| `MAX_CONCURRENT_STRATEGIES` | 5 | Maximum number of concurrent strategies |
+
+### Logging
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_LEVEL` | INFO | Log level: DEBUG, INFO, WARNING, ERROR |
+| `LOG_FILE` | logs/bot.log | Path to log file |
+
+### Backtest
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BACKTEST_START_DATE` | 2024-01-01 | Backtest start date (YYYY-MM-DD) |
+| `BACKTEST_END_DATE` | 2024-12-31 | Backtest end date (YYYY-MM-DD) |
+
+### Docker Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DASHBOARD_PORT` | 5000 | Dashboard web UI port |
+| `DEMO_PORT` | 5001 | Demo dashboard port |
+
+### Example .env file
+
+```bash
+# Binance API Credentials
+BINANCE_API_KEY=your_api_key_here
+BINANCE_API_SECRET=your_api_secret_here
+
+# Trading Configuration
+BINANCE_TESTNET=true
+TOTAL_CAPITAL_USDT=10000
+MAX_ALLOCATION_PER_COIN=0.20
+
+# Risk Management
+STOP_LOSS_PERCENT=25
+MAX_CONCURRENT_STRATEGIES=5
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FILE=logs/bot.log
+
+# Backtest
+BACKTEST_START_DATE=2024-01-01
+BACKTEST_END_DATE=2024-12-31
+
+# Docker Configuration
+DASHBOARD_PORT=5000
+DEMO_PORT=5001
+```
+
+> **⚠️ Important:** Never commit your `.env` file to version control. The `.gitignore` already excludes it.
+
 ## Docker Installation
 
 You can also run the bot using Docker Compose.
@@ -252,16 +330,6 @@ docker compose down
 docker compose build --no-cache
 docker compose up -d dashboard
 ```
-
-### Environment Variables (Docker)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DASHBOARD_PORT` | 5000 | Dashboard web UI port |
-| `DEMO_PORT` | 5001 | Demo dashboard port |
-| `BINANCE_API_KEY` | - | Your Binance API key |
-| `BINANCE_API_SECRET` | - | Your Binance API secret |
-| `BINANCE_TESTNET` | true | Use testnet (true) or live (false) |
 
 ### Volume Mounts
 
