@@ -60,8 +60,13 @@ class BinanceClient:
     @staticmethod
     def _round_to_step(value, step_size):
         """Round a value down to the nearest step size.
-        Returns Decimal to preserve exact precision for Binance API string formatting."""
-        step = Decimal(str(step_size))
+        Returns Decimal to preserve exact precision for Binance API string formatting.
+
+        Note: Binance returns tick_size/step_size with trailing zeros (e.g. '0.01000000').
+        We must normalize() to strip trailing zeros before quantize(), otherwise
+        quantize() matches decimal places (8) instead of rounding to the step (0.01).
+        """
+        step = Decimal(str(step_size)).normalize()
         val = Decimal(str(value))
         return val.quantize(step, rounding=ROUND_DOWN)
 
