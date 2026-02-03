@@ -100,6 +100,93 @@ docker logs -f binance-dcr-live
 | Restart Bot | `docker restart binance-dcr-live` |
 | View Logs | `docker logs -f binance-dcr-live` |
 
+### Start/Stop Specific Trading Pair
+
+หยุด Bot เฉพาะคู่เหรียญ:
+
+```bash
+# Stop และ Remove container เฉพาะคู่ DCR/USDT
+docker stop binance-dcr-live && docker rm binance-dcr-live
+
+# Start ใหม่ด้วย docker run
+docker run -d --name binance-dcr-live \
+  --env-file .env \
+  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data:/app/data \
+  binance-dcr-bot \
+  python main.py --mode live --symbol DCR/USDT
+
+# หรือใช้ docker-compose (แนะนำ)
+docker-compose --profile dcr up -d dcr-live
+```
+
+รันคู่เหรียญอื่น (ตัวอย่าง BTC/USDT):
+
+```bash
+# รัน BTC/USDT
+docker run -d --name binance-btc-live \
+  --env-file .env \
+  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data:/app/data \
+  binance-dcr-bot \
+  python main.py --mode live --symbol BTC/USDT
+
+# รัน ETH/USDT
+docker run -d --name binance-eth-live \
+  --env-file .env \
+  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data:/app/data \
+  binance-dcr-bot \
+  python main.py --mode live --symbol ETH/USDT
+
+# Stop เฉพาะ BTC
+docker stop binance-btc-live && docker rm binance-btc-live
+
+# Stop เฉพาะ ETH
+docker stop binance-eth-live && docker rm binance-eth-live
+```
+
+### Start/Stop All Bots
+
+หยุด Bot ทั้งหมด:
+
+```bash
+# Stop ทุก container ที่เกี่ยวกับ binance-bot
+docker stop $(docker ps -q --filter "name=binance-")
+docker rm $(docker ps -aq --filter "name=binance-")
+
+# หรือใช้ docker-compose (แนะนำ)
+docker-compose down
+```
+
+Start Bot ทั้งหมด:
+
+```bash
+# Start ทุก service ด้วย docker-compose
+docker-compose up -d
+
+# Start พร้อม DCR Live
+docker-compose --profile dcr up -d
+
+# Start หลายคู่พร้อมกัน (ใช้ docker run)
+docker run -d --name binance-btc-live --env-file .env -v $(pwd)/logs:/app/logs -v $(pwd)/data:/app/data binance-dcr-bot python main.py --mode live --symbol BTC/USDT
+docker run -d --name binance-eth-live --env-file .env -v $(pwd)/logs:/app/logs -v $(pwd)/data:/app/data binance-dcr-bot python main.py --mode live --symbol ETH/USDT
+docker run -d --name binance-dcr-live --env-file .env -v $(pwd)/logs:/app/logs -v $(pwd)/data:/app/data binance-dcr-bot python main.py --mode live --symbol DCR/USDT
+```
+
+### Quick Reference Table
+
+| Action | Command |
+|--------|---------|
+| Stop เฉพาะ DCR | `docker stop binance-dcr-live && docker rm binance-dcr-live` |
+| Stop เฉพาะ BTC | `docker stop binance-btc-live && docker rm binance-btc-live` |
+| Stop ทั้งหมด | `docker stop $(docker ps -q --filter "name=binance-")` |
+| Remove ทั้งหมด | `docker rm $(docker ps -aq --filter "name=binance-")` |
+| Start DCR | `docker-compose --profile dcr up -d dcr-live` |
+| Start All | `docker-compose up -d` |
+| View All Bots | `docker ps --filter "name=binance-"` |
+| View Logs | `docker logs -f binance-dcr-live` |
+
 ### Troubleshooting Docker on Windows
 
 If you encounter `pthread_create failed: Resource temporarily unavailable` errors:
