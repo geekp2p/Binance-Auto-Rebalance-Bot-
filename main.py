@@ -118,11 +118,16 @@ def run_live_trading(args):
         strategy.update_prices(current_price)
         logger.info(f"Initialized {strategy.config['name']} at ${current_price:.2f}")
 
-        # Place initial ladder orders
-        order_manager.place_ladder_buy_orders(strategy, current_price)
+        # Place initial ladder orders based on placement mode
+        if order_manager.is_sequential_mode(strategy):
+            logger.info(f"{strategy.config['name']}: Sequential mode - placing first order only")
+            order_manager.place_next_sequential_order(strategy, current_price)
+        else:
+            order_manager.place_ladder_buy_orders(strategy, current_price)
 
     # Main trading loop
     logger.info("Starting trading loop...")
+    check_interval = 30  # Check more frequently for sequential mode responsiveness
     try:
         while True:
             # Check filled orders
@@ -153,20 +158,32 @@ def run_live_trading(args):
                            f"Open: {stats['num_open_positions']} | "
                            f"Trades: {stats['num_trades']}")
 
-            # Auto-restart: when all positions are closed and no active orders,
-            # reset ladders and place new buy orders for the next cycle
-            if not order_manager.active_orders:
-                for strategy in strategies:
-                    if strategy.all_ladders_closed():
-                        current_price = current_prices[strategy.config['pair']]
-                        logger.info(f"=== AUTO-RESTART: {strategy.config['name']} cycle complete, "
-                                    f"starting new cycle at ${current_price:.2f} ===")
-                        strategy.reset_ladders()
-                        strategy.update_prices(current_price)
+            # Sequential mode: check if price is approaching next levels
+            for strategy in strategies:
+                if order_manager.is_sequential_mode(strategy):
+                    cp = current_prices[strategy.config['pair']]
+                    order_manager.place_next_sequential_order(strategy, cp)
+
+            # Auto-restart: when all positions are closed and no active orders for a strategy
+            for strategy in strategies:
+                strategy_has_orders = any(
+                    od['strategy'] == strategy.config['name']
+                    for od in order_manager.active_orders.values()
+                )
+                if not strategy_has_orders and strategy.all_ladders_closed():
+                    current_price = current_prices[strategy.config['pair']]
+                    logger.info(f"=== AUTO-RESTART: {strategy.config['name']} cycle complete, "
+                                f"starting new cycle at ${current_price:.2f} ===")
+                    strategy.reset_ladders()
+                    strategy.update_prices(current_price)
+                    if order_manager.is_sequential_mode(strategy):
+                        order_manager.reset_sequential_state(strategy.config['name'])
+                        order_manager.place_next_sequential_order(strategy, current_price)
+                    else:
                         order_manager.place_ladder_buy_orders(strategy, current_price)
 
             # Sleep before next iteration
-            time.sleep(60)  # Check every minute
+            time.sleep(check_interval)
 
     except KeyboardInterrupt:
         logger.info("\nShutting down gracefully...")

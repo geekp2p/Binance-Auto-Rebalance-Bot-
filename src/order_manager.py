@@ -13,6 +13,7 @@ class OrderManager:
         self.client = binance_client
         self.portfolio = portfolio
         self.active_orders = {}  # {order_id: order_details}
+        self._sequential_state = {}  # {strategy_name: {next_level_idx, last_order_time}}
 
     def place_ladder_buy_orders(self, strategy, current_price):
         """Place buy orders for all pending ladders, respecting balance and exchange filters"""
@@ -81,6 +82,147 @@ class OrderManager:
                     + (f", {skipped_price_filter} skipped (price filter)" if skipped_price_filter else ""))
 
         return orders_placed
+
+    def place_next_sequential_order(self, strategy, current_price):
+        """Place only the next pending buy order when price approaches.
+
+        Sequential mode: instead of placing all ladder orders at once,
+        place them one at a time. Wait until the price is within
+        proximity_percent of the next level, then wait delay_seconds
+        before placing the order.
+
+        Returns the placed order or None.
+        """
+        placement_config = strategy.config.get('order_placement', {})
+        proximity_pct = placement_config.get('proximity_percent', 0.015)
+        delay_secs = placement_config.get('delay_seconds', 45)
+
+        strategy_name = strategy.config['name']
+        symbol = strategy.config['pair']
+
+        # Initialize sequential state for this strategy
+        if strategy_name not in self._sequential_state:
+            self._sequential_state[strategy_name] = {
+                'next_level_idx': 0,
+                'approaching_since': None,
+            }
+
+        state = self._sequential_state[strategy_name]
+
+        # Check if we already have an active buy order for this strategy
+        has_active_buy = any(
+            od['strategy'] == strategy_name and od['type'] == 'BUY'
+            for od in self.active_orders.values()
+        )
+        if has_active_buy:
+            return None  # Wait for the current order to fill or be cancelled
+
+        # Find the next pending ladder
+        pending = strategy.get_pending_ladders()
+        if not pending:
+            return None
+
+        next_ladder = pending[0]
+
+        # For the very first order, place immediately (it's the closest to price)
+        if state['next_level_idx'] == 0 and state['approaching_since'] is None:
+            return self._place_single_buy_order(strategy, next_ladder, current_price, symbol)
+
+        # Check if price is approaching the next ladder's buy price
+        distance_pct = (current_price - next_ladder['buy_price']) / current_price
+        if distance_pct <= proximity_pct:
+            now = time.time()
+
+            if state['approaching_since'] is None:
+                # Price just entered proximity zone - start the delay timer
+                state['approaching_since'] = now
+                logger.info(f"[{strategy_name}] Price ${current_price:.2f} approaching "
+                           f"level {next_ladder['level']} @ ${next_ladder['buy_price']:.2f} "
+                           f"(distance: {distance_pct:.2%}), waiting {delay_secs}s...")
+                return None
+
+            elapsed = now - state['approaching_since']
+            if elapsed >= delay_secs:
+                # Delay elapsed, place the order
+                state['approaching_since'] = None
+                return self._place_single_buy_order(strategy, next_ladder, current_price, symbol)
+            else:
+                remaining = delay_secs - elapsed
+                logger.debug(f"[{strategy_name}] Waiting {remaining:.0f}s more before placing "
+                            f"level {next_ladder['level']}...")
+                return None
+        else:
+            # Price moved away - reset the timer
+            if state['approaching_since'] is not None:
+                state['approaching_since'] = None
+                logger.info(f"[{strategy_name}] Price moved away from level {next_ladder['level']}, "
+                           f"resetting timer")
+            return None
+
+    def _place_single_buy_order(self, strategy, ladder, current_price, symbol):
+        """Place a single buy order for one ladder level."""
+        strategy_name = strategy.config['name']
+
+        if ladder['buy_price'] >= current_price:
+            return None
+
+        # Check available balance
+        try:
+            balance = self.client.get_account_balance('USDT')
+            available_usdt = balance['free']
+        except Exception as e:
+            logger.error(f"Cannot fetch USDT balance: {e}")
+            return None
+
+        estimated_cost = ladder['buy_price'] * ladder['btc_amount']
+        if estimated_cost > available_usdt:
+            logger.warning(f"[{strategy_name}] Skipping level {ladder['level']}: "
+                         f"need ${estimated_cost:.2f} but only ${available_usdt:.2f} USDT available")
+            return None
+
+        # Check PERCENT_PRICE_BY_SIDE filter
+        ok, reason = self.client.check_percent_price_filter(symbol, 'BUY', ladder['buy_price'])
+        if not ok:
+            logger.warning(f"[{strategy_name}] Skipping level {ladder['level']}: {reason}")
+            return None
+
+        try:
+            order = self.client.create_limit_order(
+                symbol=symbol,
+                side='BUY',
+                quantity=ladder['btc_amount'],
+                price=ladder['buy_price']
+            )
+
+            self.active_orders[order['orderId']] = {
+                'strategy': strategy_name,
+                'level': ladder['level'],
+                'type': 'BUY',
+                'order': order,
+                'ladder': ladder
+            }
+
+            # Advance sequential state
+            if strategy_name in self._sequential_state:
+                self._sequential_state[strategy_name]['next_level_idx'] += 1
+                self._sequential_state[strategy_name]['approaching_since'] = None
+
+            logger.info(f"[{strategy_name}] Sequential buy order placed: "
+                       f"Level {ladder['level']} @ ${ladder['buy_price']:.2f}")
+            return order
+
+        except Exception as e:
+            logger.error(f"[{strategy_name}] Failed to place buy order for level {ladder['level']}: {e}")
+            return None
+
+    def reset_sequential_state(self, strategy_name):
+        """Reset sequential placement state for a strategy (e.g., on new cycle)."""
+        if strategy_name in self._sequential_state:
+            del self._sequential_state[strategy_name]
+
+    def is_sequential_mode(self, strategy):
+        """Check if a strategy uses sequential order placement."""
+        return strategy.config.get('order_placement', {}).get('mode') == 'sequential'
 
     def place_sell_order(self, strategy, ladder):
         """Place sell order for an active ladder"""
