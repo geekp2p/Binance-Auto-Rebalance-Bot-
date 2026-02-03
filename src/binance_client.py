@@ -59,10 +59,11 @@ class BinanceClient:
 
     @staticmethod
     def _round_to_step(value, step_size):
-        """Round a value down to the nearest step size"""
+        """Round a value down to the nearest step size.
+        Returns Decimal to preserve exact precision for Binance API string formatting."""
         step = Decimal(str(step_size))
         val = Decimal(str(value))
-        return float(val.quantize(step, rounding=ROUND_DOWN))
+        return val.quantize(step, rounding=ROUND_DOWN)
 
     def round_price(self, symbol, price):
         """Round price to comply with PRICE_FILTER tick size"""
@@ -110,7 +111,7 @@ class BinanceClient:
             if rounded_price <= 0:
                 raise ValueError(f"Price {price} rounds to 0 for {symbol} (tick_size too large)")
 
-            logger.debug(f"Order precision: price {price} -> {rounded_price}, qty {quantity} -> {rounded_qty}")
+            logger.info(f"Order precision: price {price} -> '{rounded_price}', qty {quantity} -> '{rounded_qty}'")
 
             order = self.client.create_order(
                 symbol=symbol,
