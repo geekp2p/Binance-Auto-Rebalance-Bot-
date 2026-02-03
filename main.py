@@ -153,6 +153,18 @@ def run_live_trading(args):
                            f"Open: {stats['num_open_positions']} | "
                            f"Trades: {stats['num_trades']}")
 
+            # Auto-restart: when all positions are closed and no active orders,
+            # reset ladders and place new buy orders for the next cycle
+            if not order_manager.active_orders:
+                for strategy in strategies:
+                    if strategy.all_ladders_closed():
+                        current_price = current_prices[strategy.config['pair']]
+                        logger.info(f"=== AUTO-RESTART: {strategy.config['name']} cycle complete, "
+                                    f"starting new cycle at ${current_price:.2f} ===")
+                        strategy.reset_ladders()
+                        strategy.update_prices(current_price)
+                        order_manager.place_ladder_buy_orders(strategy, current_price)
+
             # Sleep before next iteration
             time.sleep(60)  # Check every minute
 
