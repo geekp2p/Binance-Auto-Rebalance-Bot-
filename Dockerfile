@@ -1,5 +1,4 @@
-# syntax=docker/dockerfile:1
-FROM --platform=linux/amd64 python:3.12-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
