@@ -1,14 +1,16 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
+FROM --platform=linux/amd64 python:3.12-slim
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # Install system dependencies for matplotlib
-# Split into separate commands to avoid Docker Desktop/Windows build issues
-RUN apt-get update
-RUN apt-get install -y --no-install-recommends gcc
-RUN rm -rf /var/lib/apt/lists/*
+# Combined into single RUN to reduce layer issues on Docker Desktop/Windows
+# Using shell form with explicit bash for better WSL2 compatibility
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt /app/
