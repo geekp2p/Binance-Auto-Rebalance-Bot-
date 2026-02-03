@@ -6,7 +6,6 @@
 
   "ladder_config": {
     "base_gap": 0.0075,
-    "max_gap": 0.15,
     "ladders": 8,
     "fibonacci": [1, 1, 2, 3, 5, 8, 13, 21],
     "unit_size_eth": 0.05

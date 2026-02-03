@@ -22,18 +22,16 @@ class Strategy:
         return config
 
     def _calculate_ladders(self):
-        """Calculate ladder levels using compound multiplicative gaps with cap.
+        """Calculate ladder levels using compound multiplicative gaps.
 
         Instead of additive gaps (which can exceed 100% and produce negative prices),
         each level's gap is applied to the remaining price:
             buy_multiplier = (1 - gap₁) × (1 - gap₂) × (1 - gap₃) × ...
 
-        Each individual gap is capped at max_gap to prevent extreme drops.
         This guarantees buy_multiplier stays positive (never reaches zero).
         """
         ladder_config = self.config['ladder_config']
         base_gap = ladder_config['base_gap']
-        max_gap = ladder_config.get('max_gap', 1.0)  # Default: no cap
         fibonacci = ladder_config['fibonacci']
         num_ladders = ladder_config['ladders']
 
@@ -42,8 +40,7 @@ class Strategy:
 
         for i in range(num_ladders):
             fib = fibonacci[i]
-            raw_gap = base_gap * fib
-            gap = min(raw_gap, max_gap)  # Cap each level's gap
+            gap = base_gap * fib
 
             prev_multiplier = buy_multiplier
             buy_multiplier *= (1 - gap)  # Compound: multiply remaining price

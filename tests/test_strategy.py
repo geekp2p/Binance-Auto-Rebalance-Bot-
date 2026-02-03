@@ -15,7 +15,6 @@ def sample_config():
 
     Uses real production values:
     - base_gap: 0.8% (0.008) - realistic gap between ladders
-    - max_gap: 15% (0.15) - cap per level
     - fibonacci: [1,1,2,3,5,8,13,21,34,55] - standard Fibonacci sequence
     - Compound formula: buy_multiplier = ∏(1 - gap_i)
     """
@@ -26,7 +25,6 @@ def sample_config():
         "description": "Conservative BTC strategy with 10 Fibonacci ladders",
         "ladder_config": {
             "base_gap": 0.008,  # 0.8% base gap (realistic)
-            "max_gap": 0.15,    # 15% max gap per level
             "ladders": 10,
             "fibonacci": [1, 1, 2, 3, 5, 8, 13, 21, 34, 55],
             "unit_size_btc": 0.001
@@ -71,20 +69,20 @@ class TestStrategy:
     def test_ladder_calculation(self, strategy):
         """Test that 10 ladders are calculated correctly with compound Fibonacci gaps
 
-        With base_gap=0.8%, max_gap=15%, Fibonacci [1,1,2,3,5,8,13,21,34,55]:
-        Compound formula: buy_multiplier = ∏(1 - min(base_gap * fib, max_gap))
+        With base_gap=0.8%, Fibonacci [1,1,2,3,5,8,13,21,34,55]:
+        Compound formula: buy_multiplier = ∏(1 - base_gap * fib_i)
 
-        Level  Fib  Raw Gap  Capped   Multiplier    Cumulative Drop
-        -1     1    0.8%     0.8%     0.992000      0.8%
-        -2     1    0.8%     0.8%     0.984064      1.6%
-        -3     2    1.6%     1.6%     0.968319      3.2%
-        -4     3    2.4%     2.4%     0.945079      5.5%
-        -5     5    4.0%     4.0%     0.907276      9.3%
-        -6     8    6.4%     6.4%     0.849210      15.1%
-        -7     13   10.4%    10.4%    0.760892      23.9%
-        -8     21   15.0%    15.0%    0.646759      35.3%  (capped)
-        -9     34   15.0%    15.0%    0.549745      45.0%  (capped)
-        -10    55   15.0%    15.0%    0.467283      53.3%  (capped)
+        Level  Fib  Gap      Multiplier    Cumulative Drop
+        -1     1    0.8%     0.992000      0.8%
+        -2     1    0.8%     0.984064      1.6%
+        -3     2    1.6%     0.968319      3.2%
+        -4     3    2.4%     0.945079      5.5%
+        -5     5    4.0%     0.907276      9.3%
+        -6     8    6.4%     0.849210      15.1%
+        -7     13   10.4%    0.760892      23.9%
+        -8     21   16.8%    0.633062      36.7%
+        -9     34   27.2%    0.460869      53.9%
+        -10    55   44.0%    0.258087      74.2%
         """
         assert len(strategy.ladders) == 10
 
@@ -95,11 +93,10 @@ class TestStrategy:
 
         # Compute expected compound multipliers
         base_gap = 0.008
-        max_gap = 0.15
         fibonacci = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
         expected_multiplier = 1.0
         for i, fib in enumerate(fibonacci):
-            gap = min(base_gap * fib, max_gap)
+            gap = base_gap * fib
             expected_multiplier *= (1 - gap)
             expected_cumulative = 1 - expected_multiplier
             assert abs(strategy.ladders[i]['cumulative_gap_percent'] - expected_cumulative) < 0.0001
