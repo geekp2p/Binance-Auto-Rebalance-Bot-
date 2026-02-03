@@ -71,7 +71,10 @@ docker compose up -d dashboard
 ### Docker Commands
 
 ```bash
-# 1. Build
+# 1. Build (Windows - use build-docker.bat or disable BuildKit)
+build-docker.bat
+# OR
+set DOCKER_BUILDKIT=0
 docker build -t binance-dcr-bot .
 
 # 2. Run DCR Live
@@ -96,6 +99,30 @@ docker logs -f binance-dcr-live
 | View Status | `docker ps` |
 | Restart Bot | `docker restart binance-dcr-live` |
 | View Logs | `docker logs -f binance-dcr-live` |
+
+### Troubleshooting Docker on Windows
+
+If you encounter `pthread_create failed: Resource temporarily unavailable` errors:
+
+1. **Use the build script (recommended)**:
+   ```bash
+   build-docker.bat
+   ```
+
+2. **Or manually disable BuildKit**:
+   ```bash
+   set DOCKER_BUILDKIT=0
+   docker build -t binance-dcr-bot .
+   ```
+
+3. **If issues persist, increase WSL2 memory**:
+   - Create/edit `%USERPROFILE%\.wslconfig`:
+     ```ini
+     [wsl2]
+     memory=4GB
+     processors=2
+     ```
+   - Run `wsl --shutdown` and restart Docker Desktop
 
 ### Docker Cleanup
 

@@ -4,14 +4,10 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install system dependencies for matplotlib
-# Combined into single RUN to reduce layer issues on Docker Desktop/Windows
-# Using shell form with explicit bash for better WSL2 compatibility
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
+# Install Python dependencies first (wheels available for all packages)
+# NOTE: If build fails with pthread_create error on Windows, run:
+#   set DOCKER_BUILDKIT=0
+#   docker build -t binance-dcr-bot .
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
