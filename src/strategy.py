@@ -38,9 +38,12 @@ class Strategy:
         buy_multiplier = 1.0
         self.ladders = []
 
+        gap_max = ladder_config.get('gap_max', 0.95)
+
         for i in range(num_ladders):
             fib = fibonacci[i]
-            gap = base_gap * fib
+            raw_gap = base_gap * fib
+            gap = min(raw_gap, gap_max)  # Clamp: never exceed gap_max (default 95%)
 
             prev_multiplier = buy_multiplier
             buy_multiplier *= (1 - gap)  # Compound: multiply remaining price
@@ -51,7 +54,8 @@ class Strategy:
             ladder = {
                 'level': -(i + 1),
                 'fibonacci': fib,
-                'gap_percent': gap,
+                'raw_gap_percent': raw_gap,
+                'gap_percent': gap,  # Effective gap after clamp
                 'cumulative_gap_percent': 1 - buy_multiplier,  # Total drop from starting price
                 'buy_price_multiplier': buy_multiplier,
                 'sell_price_multiplier': sell_multiplier,
