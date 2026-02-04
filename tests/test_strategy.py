@@ -157,3 +157,130 @@ class TestStrategy:
         assert 'ladders' in result
         assert 'total_swing' in result
         assert 'required_capital' in result
+
+
+class TestGapClamp:
+    """Test gap_max clamp prevents negative prices for high base_gap coins"""
+
+    @pytest.fixture
+    def zec_config(self):
+        """ZEC-like config where fib×base_gap exceeds 100% at level -9"""
+        return {
+            "enabled": True,
+            "name": "ZEC Balanced",
+            "pair": "ZECUSDT",
+            "description": "ZEC with gap_max clamp",
+            "ladder_config": {
+                "base_gap": 0.038,
+                "gap_max": 0.95,
+                "ladders": 13,
+                "fibonacci": [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233],
+                "unit_size_zec": 3.0
+            },
+            "capital_allocation": {
+                "max_allocation_percent": 0.35,
+                "reserve_percent": 0.10
+            },
+            "risk_management": {
+                "safety_multiplier": 1.5,
+                "stop_loss_percent": -0.50,
+                "take_profit_percent": 0.25
+            },
+            "execution": {
+                "auto_rebalance": True,
+                "rebalance_interval_hours": 12,
+                "min_profit_to_close": 0.005
+            }
+        }
+
+    @pytest.fixture
+    def zec_strategy(self, zec_config):
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(zec_config, f)
+            temp_path = f.name
+        try:
+            strategy = Strategy(temp_path)
+            yield strategy
+        finally:
+            os.unlink(temp_path)
+
+    def test_all_13_ladders_created(self, zec_strategy):
+        """All 13 ladders should be created (no truncation)"""
+        assert len(zec_strategy.ladders) == 13
+
+    def test_all_buy_multipliers_positive(self, zec_strategy):
+        """Every buy_price_multiplier must be > 0 (no negative prices)"""
+        for ladder in zec_strategy.ladders:
+            assert ladder['buy_price_multiplier'] > 0, \
+                f"Level {ladder['level']}: multiplier={ladder['buy_price_multiplier']}"
+
+    def test_gap_clamped_at_95(self, zec_strategy):
+        """Levels where raw gap > 95% should be clamped to 95%"""
+        for ladder in zec_strategy.ladders:
+            assert ladder['gap_percent'] <= 0.95, \
+                f"Level {ladder['level']}: gap={ladder['gap_percent']}"
+
+        # Level -9 (fib=34): raw_gap = 0.038 * 34 = 1.292, should clamp to 0.95
+        level_9 = zec_strategy.ladders[8]
+        assert level_9['raw_gap_percent'] == pytest.approx(0.038 * 34, abs=1e-10)
+        assert level_9['gap_percent'] == 0.95
+
+    def test_raw_gap_preserved(self, zec_strategy):
+        """raw_gap_percent stores the unclamped value"""
+        level_1 = zec_strategy.ladders[0]
+        assert level_1['raw_gap_percent'] == pytest.approx(0.038, abs=1e-10)
+        assert level_1['gap_percent'] == pytest.approx(0.038, abs=1e-10)
+
+        # Level -9 raw gap should exceed 1.0
+        level_9 = zec_strategy.ladders[8]
+        assert level_9['raw_gap_percent'] > 1.0
+
+    def test_zec_buy_prices_match(self, zec_strategy):
+        """Verify ZEC buy prices at entry=$35.00 match expected values"""
+        entry = 35.00
+        zec_strategy.update_prices(entry)
+
+        expected_buy = [33.67, 32.39, 29.93, 26.52, 21.48, 14.95, 7.56, 1.53]
+        for i, exp in enumerate(expected_buy):
+            actual = zec_strategy.ladders[i]['buy_price']
+            assert abs(actual - exp) < 0.02, \
+                f"Level {-(i+1)}: expected ~${exp}, got ${actual:.4f}"
+
+    def test_sell_equals_buy_divided_by_one_minus_gap(self, zec_strategy):
+        """Verify: sell = buy / (1 - gap) for reverse calculation"""
+        entry = 35.00
+        zec_strategy.update_prices(entry)
+
+        for ladder in zec_strategy.ladders:
+            gap = ladder['gap_percent']
+            reconstructed_sell = ladder['buy_price'] / (1 - gap)
+            assert abs(reconstructed_sell - ladder['sell_price']) < 0.001, \
+                f"Level {ladder['level']}: sell=${ladder['sell_price']:.4f} vs reconstructed=${reconstructed_sell:.4f}"
+
+    def test_default_gap_max(self):
+        """When gap_max is not in config, default to 0.95"""
+        config = {
+            "enabled": True,
+            "name": "No Gap Max",
+            "pair": "TESTUSDT",
+            "description": "Test default gap_max",
+            "ladder_config": {
+                "base_gap": 0.038,
+                "ladders": 10,
+                "fibonacci": [1, 1, 2, 3, 5, 8, 13, 21, 34, 55],
+                "unit_size_tes": 1.0
+            },
+            "capital_allocation": {"max_allocation_percent": 0.25, "reserve_percent": 0.10},
+            "risk_management": {"safety_multiplier": 1.5, "stop_loss_percent": -0.50, "take_profit_percent": 0.25},
+            "execution": {"auto_rebalance": True, "rebalance_interval_hours": 12, "min_profit_to_close": 0.005}
+        }
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(config, f)
+            temp_path = f.name
+        try:
+            s = Strategy(temp_path)
+            # Level -9 (fib=34): 0.038*34=1.292, should clamp to default 0.95
+            assert s.ladders[8]['gap_percent'] == 0.95
+            assert s.ladders[8]['buy_price_multiplier'] > 0
+        finally:
+            os.unlink(temp_path)
