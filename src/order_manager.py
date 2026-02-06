@@ -14,7 +14,7 @@ class OrderManager:
         self.portfolio = portfolio
         self.active_orders = {}  # {order_id: order_details}
         self._sequential_state = {}  # {strategy_name: {next_level_idx, last_order_time}}
-        self._insufficient_balance_warned = {}  # {strategy_name: level} - track warned levels to avoid spam
+        self._insufficient_balance_warned = {}  # {strategy_name: {level, last_warn_time}} - periodic warnings
 
     def place_ladder_buy_orders(self, strategy, current_price):
         """Place buy orders for all pending ladders, respecting balance and exchange filters"""
@@ -129,6 +129,15 @@ class OrderManager:
         if state['next_level_idx'] == 0 and state['approaching_since'] is None:
             return self._place_single_buy_order(strategy, next_ladder, current_price, symbol)
 
+        # Check if price has already dropped below the buy price
+        # In this case, place the order immediately (limit buy above market fills at market)
+        if current_price <= next_ladder['buy_price']:
+            logger.info(f"[{strategy_name}] Price ${current_price:.2f} already below "
+                       f"level {next_ladder['level']} buy @ ${next_ladder['buy_price']:.2f}, "
+                       f"placing order immediately")
+            state['approaching_since'] = None
+            return self._place_single_buy_order(strategy, next_ladder, current_price, symbol)
+
         # Check if price is approaching the next ladder's buy price
         distance_pct = (current_price - next_ladder['buy_price']) / current_price
         if distance_pct <= proximity_pct:
@@ -161,11 +170,13 @@ class OrderManager:
             return None
 
     def _place_single_buy_order(self, strategy, ladder, current_price, symbol):
-        """Place a single buy order for one ladder level."""
-        strategy_name = strategy.config['name']
+        """Place a single buy order for one ladder level.
 
-        if ladder['buy_price'] >= current_price:
-            return None
+        Note: If buy_price >= current_price, this is still valid. On Binance,
+        a limit buy order priced above the market will fill immediately at the
+        current market price (like a market order with price protection).
+        """
+        strategy_name = strategy.config['name']
 
         # Check available balance
         try:
@@ -177,12 +188,23 @@ class OrderManager:
 
         estimated_cost = ladder['buy_price'] * ladder['btc_amount']
         if estimated_cost > available_usdt:
-            # Only warn once per level to avoid spamming logs every 30s
-            warned_level = self._insufficient_balance_warned.get(strategy_name)
-            if warned_level != ladder['level']:
-                logger.warning(f"[{strategy_name}] Waiting for balance for level {ladder['level']}: "
-                             f"need ${estimated_cost:.2f} but only ${available_usdt:.2f} USDT available")
-                self._insufficient_balance_warned[strategy_name] = ladder['level']
+            # Warn periodically (every 5 minutes) so user knows to deposit funds
+            warn_interval = 300  # 5 minutes
+            now = time.time()
+            warn_info = self._insufficient_balance_warned.get(strategy_name, {})
+            should_warn = (
+                warn_info.get('level') != ladder['level'] or
+                now - warn_info.get('last_warn_time', 0) >= warn_interval
+            )
+            if should_warn:
+                shortfall = estimated_cost - available_usdt
+                logger.warning(f"[{strategy_name}] Insufficient balance for level {ladder['level']}: "
+                             f"need ${estimated_cost:.2f} but only ${available_usdt:.2f} USDT available "
+                             f"(short ${shortfall:.2f}). Deposit more USDT to continue.")
+                self._insufficient_balance_warned[strategy_name] = {
+                    'level': ladder['level'],
+                    'last_warn_time': now,
+                }
             return None
 
         # Check PERCENT_PRICE_BY_SIDE filter
