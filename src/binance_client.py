@@ -2,11 +2,13 @@
 Binance API Client Wrapper
 """
 import os
+import time
 from decimal import Decimal, ROUND_DOWN
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from dotenv import load_dotenv
 import logging
+import requests.exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -113,14 +115,26 @@ class BinanceClient:
                           f"[${min_price:.2f}, ${max_price:.2f}] (avg=${avg_price:.2f})")
         return True, ""
 
-    def get_current_price(self, symbol):
-        """Get current market price for a symbol"""
-        try:
-            ticker = self.client.get_symbol_ticker(symbol=symbol)
-            return float(ticker['price'])
-        except BinanceAPIException as e:
-            logger.error(f"Error getting price for {symbol}: {e}")
-            raise
+    def get_current_price(self, symbol, retries=3, backoff=2):
+        """Get current market price for a symbol, with retry on network errors"""
+        for attempt in range(retries + 1):
+            try:
+                ticker = self.client.get_symbol_ticker(symbol=symbol)
+                return float(ticker['price'])
+            except BinanceAPIException as e:
+                logger.error(f"Error getting price for {symbol}: {e}")
+                raise
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout,
+                    requests.exceptions.ReadTimeout) as e:
+                if attempt < retries:
+                    wait = backoff ** (attempt + 1)
+                    logger.warning(f"Network error getting price for {symbol} "
+                                   f"(attempt {attempt + 1}/{retries + 1}), retrying in {wait}s: {e}")
+                    time.sleep(wait)
+                else:
+                    logger.error(f"Network error getting price for {symbol} after {retries + 1} attempts: {e}")
+                    raise
 
     def get_account_balance(self, asset='USDT'):
         """Get account balance for specific asset"""
