@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from datetime import datetime
 import json
+import requests.exceptions
 
 from src.binance_client import BinanceClient
 from src.strategy import Strategy
@@ -132,60 +133,78 @@ def run_live_trading(args):
     # Main trading loop
     logger.info("Starting trading loop...")
     check_interval = 30  # Check more frequently for sequential mode responsiveness
+    max_network_backoff = 300  # Cap backoff at 5 minutes
+    consecutive_errors = 0
     try:
         while True:
-            # Check filled orders
-            filled = order_manager.check_filled_orders()
+            try:
+                # Check filled orders
+                filled = order_manager.check_filled_orders()
 
-            if filled:
-                logger.info(f"Processed {len(filled)} filled orders")
+                if filled:
+                    logger.info(f"Processed {len(filled)} filled orders")
 
-                # Place corresponding sell orders for filled buys
-                for order_data in filled:
-                    if order_data['type'] == 'BUY':
-                        # Find the strategy
-                        for strategy in strategies:
-                            if strategy.config['name'] == order_data['strategy']:
-                                order_manager.place_sell_order(strategy, order_data['ladder'])
+                    # Place corresponding sell orders for filled buys
+                    for order_data in filled:
+                        if order_data['type'] == 'BUY':
+                            # Find the strategy
+                            for strategy in strategies:
+                                if strategy.config['name'] == order_data['strategy']:
+                                    order_manager.place_sell_order(strategy, order_data['ladder'])
 
-            # Update portfolio statistics
-            current_prices = {}
-            for strategy in strategies:
-                symbol = strategy.config['pair']
-                current_prices[symbol] = client.get_current_price(symbol)
+                # Update portfolio statistics
+                current_prices = {}
+                for strategy in strategies:
+                    symbol = strategy.config['pair']
+                    current_prices[symbol] = client.get_current_price(symbol)
 
-            stats = portfolio.get_statistics(current_prices)
+                stats = portfolio.get_statistics(current_prices)
 
-            if len(filled) > 0:  # Only log when there's activity
-                logger.info(f"Portfolio: ${stats['total_value']:.2f} | "
-                           f"P&L: ${stats['total_pnl']:.2f} ({stats['roi_percent']:.2f}%) | "
-                           f"Open: {stats['num_open_positions']} | "
-                           f"Trades: {stats['num_trades']}")
+                if len(filled) > 0:  # Only log when there's activity
+                    logger.info(f"Portfolio: ${stats['total_value']:.2f} | "
+                               f"P&L: ${stats['total_pnl']:.2f} ({stats['roi_percent']:.2f}%) | "
+                               f"Open: {stats['num_open_positions']} | "
+                               f"Trades: {stats['num_trades']}")
 
-            # Sequential mode: check if price is approaching next levels
-            for strategy in strategies:
-                if order_manager.is_sequential_mode(strategy):
-                    cp = current_prices[strategy.config['pair']]
-                    order_manager.place_next_sequential_order(strategy, cp)
-
-            # Auto-restart: when all positions are closed and no active orders for a strategy
-            for strategy in strategies:
-                strategy_has_orders = any(
-                    od['strategy'] == strategy.config['name']
-                    for od in order_manager.active_orders.values()
-                )
-                if not strategy_has_orders and strategy.all_ladders_closed():
-                    current_price = current_prices[strategy.config['pair']]
-                    logger.info(f"=== AUTO-RESTART: {strategy.config['name']} cycle complete, "
-                                f"starting new cycle at ${current_price:.2f} ===")
-                    strategy.reset_ladders()
-                    strategy.update_prices(current_price)
-                    order_manager.log_planned_ladders(strategy)
+                # Sequential mode: check if price is approaching next levels
+                for strategy in strategies:
                     if order_manager.is_sequential_mode(strategy):
-                        order_manager.reset_sequential_state(strategy.config['name'])
-                        order_manager.place_next_sequential_order(strategy, current_price)
-                    else:
-                        order_manager.place_ladder_buy_orders(strategy, current_price)
+                        cp = current_prices[strategy.config['pair']]
+                        order_manager.place_next_sequential_order(strategy, cp)
+
+                # Auto-restart: when all positions are closed and no active orders for a strategy
+                for strategy in strategies:
+                    strategy_has_orders = any(
+                        od['strategy'] == strategy.config['name']
+                        for od in order_manager.active_orders.values()
+                    )
+                    if not strategy_has_orders and strategy.all_ladders_closed():
+                        current_price = current_prices[strategy.config['pair']]
+                        logger.info(f"=== AUTO-RESTART: {strategy.config['name']} cycle complete, "
+                                    f"starting new cycle at ${current_price:.2f} ===")
+                        strategy.reset_ladders()
+                        strategy.update_prices(current_price)
+                        order_manager.log_planned_ladders(strategy)
+                        if order_manager.is_sequential_mode(strategy):
+                            order_manager.reset_sequential_state(strategy.config['name'])
+                            order_manager.place_next_sequential_order(strategy, current_price)
+                        else:
+                            order_manager.place_ladder_buy_orders(strategy, current_price)
+
+                # Reset error counter on successful iteration
+                consecutive_errors = 0
+
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout,
+                    requests.exceptions.ReadTimeout,
+                    ConnectionError,
+                    OSError) as e:
+                consecutive_errors += 1
+                backoff = min(check_interval * (2 ** consecutive_errors), max_network_backoff)
+                logger.warning(f"Network error in trading loop (attempt {consecutive_errors}), "
+                               f"retrying in {backoff}s: {e}")
+                time.sleep(backoff)
+                continue
 
             # Sleep before next iteration
             time.sleep(check_interval)
